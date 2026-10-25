@@ -1,0 +1,44 @@
+name: BountySniper-RS Cloud Scanner
+
+on:
+  schedule:
+    # Run every 10 minutes automatically in GitHub Cloud
+    - cron: '*/10 * * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  snipe:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Cargo & Build
+        uses: Swatinem/rust-cache@v2
+
+      - name: Build BountySniper-RS
+        run: cargo build --release
+
+      - name: Run Bounty Sniper Radar
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN || '7729508480:AAER27k6f9XScuakIKKRuZ_rU431hfPZe0k' }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: |
+          ./target/release/bounty-sniper-rs --once --min-stars 5
+
+      - name: Commit & Push updated dedup cache
+        if: always()
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add sniper_cache.json || true
+          if git commit -m "chore(cache): update sniper dedup cache [skip ci]"; then
+            git push origin HEAD:${{ github.ref_name }}
+          fi
