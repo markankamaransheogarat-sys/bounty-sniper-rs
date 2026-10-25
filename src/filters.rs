@@ -40,6 +40,7 @@ const BLACKLISTED_OWNERS_AND_REPOS: &[&str] = &[
     "saricizmeli",
     "19260296862/my",
     "qwer80371832/loadertest",
+    "freecad-documentation-project",
 ];
 
 const BOT_SPAMMERS: &[&str] = &[
@@ -47,6 +48,14 @@ const BOT_SPAMMERS: &[&str] = &[
     "ramgox",
     "alfrexo95",
     "thanos web3",
+    "palmpay",
+];
+
+const VERIFIED_PROGRAMS: &[&str] = &[
+    "paraspell/xcm-tools",
+    "opensandbox-group/opensandbox",
+    "tabularisdb/tabularis",
+    "ubiquity/",
 ];
 
 pub struct EvaluationResult {
@@ -91,6 +100,57 @@ pub fn evaluate_candidate(
         }
     }
 
+    // 1b. Exclude Hackathons / Challenges / Contests
+    let title_lower = issue.title.to_lowercase();
+    let is_hackathon = [
+        "hackathon",
+        "challenge",
+        "contest",
+        "grant application",
+        "competition",
+        "bounty program",
+        "airdrop",
+    ]
+    .iter()
+    .any(|kw| title_lower.contains(kw) || issue.labels.iter().any(|l| l.name.to_lowercase().contains(kw)));
+
+    if is_hackathon {
+        reasons.push("Filtered out: Long-term hackathon / challenge / contest (not an immediate PR bug bounty)".to_string());
+        return EvaluationResult {
+            status: BountyStatus::Spam,
+            reward: None,
+            reasons,
+        };
+    }
+
+    // 1c. Exclude Stale / Dormant Issues (>60 days old)
+    if let Ok(created_at) = chrono::DateTime::parse_from_rfc3339(&issue.created_at) {
+        let age_days = (chrono::Utc::now() - created_at.with_timezone(&chrono::Utc)).num_days();
+        if age_days > 60 {
+            reasons.push(format!("Stale issue: opened {} days ago", age_days));
+            return EvaluationResult {
+                status: BountyStatus::Spam,
+                reward: None,
+                reasons,
+            };
+        }
+    }
+
+    // 1d. Exclude comments poisoned by bot spammers
+    for comment in comments_body {
+        let c_low = comment.to_lowercase();
+        for bot in BOT_SPAMMERS {
+            if c_low.contains(bot) {
+                reasons.push(format!("Comments poisoned by known bot spammer ({})", bot));
+                return EvaluationResult {
+                    status: BountyStatus::Spam,
+                    reward: None,
+                    reasons,
+                };
+            }
+        }
+    }
+
     // 2. Extract Reward
     let mut extracted_reward = None;
     let combined_text = format!(
@@ -112,8 +172,19 @@ pub fn evaluate_candidate(
         n.contains("bounty") || n.contains("price:") || n.contains("reward")
     });
 
+    let is_verified_program = VERIFIED_PROGRAMS.iter().any(|p| repo_lower.contains(p));
+
     if extracted_reward.is_none() && has_bounty_label {
-        extracted_reward = Some("Official Bug Bounty Label".to_string());
+        if is_verified_program {
+            extracted_reward = Some("Verified Bug Bounty Program".to_string());
+        } else {
+            reasons.push("Vague bounty label without explicit cash figure ($/USD/crypto) or escrow platform".to_string());
+            return EvaluationResult {
+                status: BountyStatus::Spam,
+                reward: None,
+                reasons,
+            };
+        }
     }
 
     if extracted_reward.is_none() {
@@ -275,5 +346,21 @@ mod tests {
         let comments = vec!["You must be a core team member to start this task".to_string()];
         let eval = evaluate_candidate(&issue, &repo, 0, &comments, 5);
         assert_eq!(eval.status, BountyStatus::Gated);
+    }
+
+    #[test]
+    fn test_rejects_hackathons_and_challenges() {
+        let repo = make_test_repo("XHToken/Spark-X2.6", 800);
+        let issue = make_test_issue("HER Hack-Astron #7 | Challenge", "Win $100", &["bounty", "reward"]);
+        let eval = evaluate_candidate(&issue, &repo, 0, &[], 5);
+        assert_eq!(eval.status, BountyStatus::Spam);
+    }
+
+    #[test]
+    fn test_rejects_vague_unfunded_bounties() {
+        let repo = make_test_repo("Reqrefusion/FreeCAD-Documentation-Project", 20);
+        let issue = make_test_issue("Maintaining Macros", "No explicit price", &["Bounty", "Reward"]);
+        let eval = evaluate_candidate(&issue, &repo, 0, &[], 5);
+        assert_eq!(eval.status, BountyStatus::Spam);
     }
 }
