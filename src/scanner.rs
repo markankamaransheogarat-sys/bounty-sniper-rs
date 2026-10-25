@@ -100,15 +100,18 @@ impl Scanner {
                             }
                         };
 
-                        // Fetch comments to check for reservations / gating
-                        let comments = self
-                            .github
-                            .get_issue_comments(&format!(
-                                "{}/comments",
-                                issue.repository_url
-                            ))
-                            .await
-                            .unwrap_or_default();
+                        // Fetch comments to check for reservations / gating (only if comments > 0)
+                        let comments = if issue.comments > 0 {
+                            self.github
+                                .get_issue_comments(&format!(
+                                    "{}/issues/{}/comments",
+                                    issue.repository_url, issue.number
+                                ))
+                                .await
+                                .unwrap_or_default()
+                        } else {
+                            Vec::new()
+                        };
 
                         // Count matching PRs
                         let matching_prs = self

@@ -41,6 +41,7 @@ const BLACKLISTED_OWNERS_AND_REPOS: &[&str] = &[
     "19260296862/my",
     "qwer80371832/loadertest",
     "freecad-documentation-project",
+    "limitlessprojects",
 ];
 
 const BOT_SPAMMERS: &[&str] = &[
@@ -100,9 +101,9 @@ pub fn evaluate_candidate(
         }
     }
 
-    // 1b. Exclude Hackathons / Challenges / Contests
+    // 1b. Exclude Hackathons / Contests / Speculative proposals / Ladders
     let title_lower = issue.title.to_lowercase();
-    let is_hackathon = [
+    let is_speculative = [
         "hackathon",
         "challenge",
         "contest",
@@ -110,12 +111,19 @@ pub fn evaluate_candidate(
         "competition",
         "bounty program",
         "airdrop",
+        "wildcard",
+        "proposal",
+        "rfc",
+        "ladder",
+        "pool",
+        "leaderboard",
+        "moonshot",
     ]
     .iter()
     .any(|kw| title_lower.contains(kw) || issue.labels.iter().any(|l| l.name.to_lowercase().contains(kw)));
 
-    if is_hackathon {
-        reasons.push("Filtered out: Long-term hackathon / challenge / contest (not an immediate PR bug bounty)".to_string());
+    if is_speculative {
+        reasons.push("Filtered out: Speculative proposal / hackathon / ladder contest (not a direct bug bounty)".to_string());
         return EvaluationResult {
             status: BountyStatus::Spam,
             reward: None,
@@ -196,7 +204,17 @@ pub fn evaluate_candidate(
         };
     }
 
-    // 3. Check Gating / Lockout
+    // 3. Check Gating / Lockout / Assignees
+    if !issue.assignees.is_empty() {
+        let assignee_names: Vec<_> = issue.assignees.iter().map(|u| u.login.as_str()).collect();
+        reasons.push(format!("Issue is already assigned to: {}", assignee_names.join(", ")));
+        return EvaluationResult {
+            status: BountyStatus::Hold,
+            reward: extracted_reward,
+            reasons,
+        };
+    }
+
     for comment in comments_body {
         if gated_regex().is_match(comment) {
             reasons.push("Issue is restricted to core team members / collaborators".to_string());
@@ -208,7 +226,7 @@ pub fn evaluate_candidate(
         }
     }
 
-    // 4. Check Claim / Reservation Signals
+    // 4. Check Claim / Reservation Signals in Comments
     let mut recent_claim_count = 0;
     for comment in comments_body {
         if claim_regex().is_match(comment) {
@@ -216,20 +234,20 @@ pub fn evaluate_candidate(
         }
     }
 
-    // 5. Check PR competition
-    if matching_pr_count > 2 {
-        reasons.push(format!("Overly crowded: {} open PRs already competing", matching_pr_count));
+    if recent_claim_count > 0 {
+        reasons.push(format!("Active reservation in comments ({} developer(s) attempted/claimed)", recent_claim_count));
         return EvaluationResult {
-            status: BountyStatus::Contested,
+            status: BountyStatus::Hold,
             reward: extracted_reward,
             reasons,
         };
     }
 
-    if recent_claim_count > 0 && matching_pr_count > 0 {
-        reasons.push(format!("Active reservation with {} competing PR(s)", matching_pr_count));
+    // 5. Check PR competition (any open PR means someone is already working/submitted)
+    if matching_pr_count > 0 {
+        reasons.push(format!("Active competing PR(s): {} open PR(s) already submitted", matching_pr_count));
         return EvaluationResult {
-            status: BountyStatus::Hold,
+            status: BountyStatus::Contested,
             reward: extracted_reward,
             reasons,
         };
@@ -245,7 +263,7 @@ pub fn evaluate_candidate(
         };
     }
 
-    reasons.push(format!("Clean ticket! {} competing PRs, reward: {}", matching_pr_count, extracted_reward.as_deref().unwrap_or("Yes")));
+    reasons.push("Clean ticket! 0 competing PRs, unassigned and ready to claim".to_string());
     EvaluationResult {
         status: BountyStatus::Pursue,
         reward: extracted_reward,
@@ -362,5 +380,46 @@ mod tests {
         let issue = make_test_issue("Maintaining Macros", "No explicit price", &["Bounty", "Reward"]);
         let eval = evaluate_candidate(&issue, &repo, 0, &[], 5);
         assert_eq!(eval.status, BountyStatus::Spam);
+    }
+
+    #[test]
+    fn test_rejects_speculative_wildcards_and_ladders() {
+        let repo = make_test_repo("limitlessprojects/Go-Hybrid", 14);
+        let issue = make_test_issue(
+            "[wildcard] Make FFI claims proof-carrying",
+            "Milestone 1 ($250)",
+            &["💎 Bounty", "wildcard"],
+        );
+        let eval = evaluate_candidate(&issue, &repo, 0, &[], 5);
+        assert_eq!(eval.status, BountyStatus::Spam);
+    }
+
+    #[test]
+    fn test_detects_competing_pr_as_contested() {
+        let repo = make_test_repo("legit/repo", 500);
+        let issue = make_test_issue("Fix bug $100", "Details", &["bounty"]);
+        let eval = evaluate_candidate(&issue, &repo, 1, &[], 5);
+        assert_eq!(eval.status, BountyStatus::Contested);
+    }
+
+    #[test]
+    fn test_detects_assigned_issues_as_hold() {
+        let repo = make_test_repo("legit/repo", 500);
+        let mut issue = make_test_issue("Fix bug $100", "Details", &["bounty"]);
+        issue.assignees = vec![User {
+            login: "someone".to_string(),
+            html_url: None,
+        }];
+        let eval = evaluate_candidate(&issue, &repo, 0, &[], 5);
+        assert_eq!(eval.status, BountyStatus::Hold);
+    }
+
+    #[test]
+    fn test_detects_comment_claims_as_hold() {
+        let repo = make_test_repo("legit/repo", 500);
+        let issue = make_test_issue("Fix bug $100", "Details", &["bounty"]);
+        let comments = vec!["/attempt I want to work on this".to_string()];
+        let eval = evaluate_candidate(&issue, &repo, 0, &comments, 5);
+        assert_eq!(eval.status, BountyStatus::Hold);
     }
 }
