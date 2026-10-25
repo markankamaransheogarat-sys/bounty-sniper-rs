@@ -2,8 +2,8 @@ name: BountySniper-RS Cloud Scanner
 
 on:
   schedule:
-    # Run every 10 minutes automatically in GitHub Cloud
-    - cron: '*/10 * * * *'
+    # Run every 5 minutes automatically in GitHub Cloud
+    - cron: '*/5 * * * *'
   workflow_dispatch:
 
 permissions:
