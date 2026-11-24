@@ -13,14 +13,13 @@ fn reward_regex() -> &'static Regex {
 }
 
 fn claim_regex() -> &'static Regex {
-    CLAIM_RE.get_or_init(|| {
-        Regex::new(r"(?im)^\s*/(claim|try|attempt|reserve)\b.*$").unwrap()
-    })
+    CLAIM_RE.get_or_init(|| Regex::new(r"(?im)^\s*/(claim|try|attempt|reserve)\b.*$").unwrap())
 }
 
 fn gated_regex() -> &'static Regex {
     GATED_RE.get_or_init(|| {
-        Regex::new(r"(?i)(must be a core team member|collaborator|locked to @|only team members)").unwrap()
+        Regex::new(r"(?i)(must be a core team member|collaborator|locked to @|only team members)")
+            .unwrap()
     })
 }
 
@@ -78,7 +77,10 @@ pub fn evaluate_candidate(
     // 1. Check Blacklist
     for blacklisted in BLACKLISTED_OWNERS_AND_REPOS {
         if repo_lower.contains(blacklisted) {
-            reasons.push(format!("Repository is on the known spam/bot blacklist: {}", blacklisted));
+            reasons.push(format!(
+                "Repository is on the known spam/bot blacklist: {}",
+                blacklisted
+            ));
             return EvaluationResult {
                 status: BountyStatus::Spam,
                 reward: None,
@@ -120,7 +122,13 @@ pub fn evaluate_candidate(
         "moonshot",
     ]
     .iter()
-    .any(|kw| title_lower.contains(kw) || issue.labels.iter().any(|l| l.name.to_lowercase().contains(kw)));
+    .any(|kw| {
+        title_lower.contains(kw)
+            || issue
+                .labels
+                .iter()
+                .any(|l| l.name.to_lowercase().contains(kw))
+    });
 
     if is_speculative {
         reasons.push("Filtered out: Speculative proposal / hackathon / ladder contest (not a direct bug bounty)".to_string());
@@ -165,13 +173,16 @@ pub fn evaluate_candidate(
         "{}\n{}\n{}",
         issue.title,
         issue.body.as_deref().unwrap_or(""),
-        issue.labels.iter().map(|l| l.name.as_str()).collect::<Vec<_>>().join(" ")
+        issue
+            .labels
+            .iter()
+            .map(|l| l.name.as_str())
+            .collect::<Vec<_>>()
+            .join(" ")
     );
 
-    for mat in reward_regex().find_iter(&combined_text) {
-        let text = mat.as_str().trim();
-        extracted_reward = Some(text.to_string());
-        break;
+    if let Some(mat) = reward_regex().find(&combined_text) {
+        extracted_reward = Some(mat.as_str().trim().to_string());
     }
 
     // Check specific label formats like "Bug bounty 💰"
@@ -186,7 +197,10 @@ pub fn evaluate_candidate(
         if is_verified_program {
             extracted_reward = Some("Verified Bug Bounty Program".to_string());
         } else {
-            reasons.push("Vague bounty label without explicit cash figure ($/USD/crypto) or escrow platform".to_string());
+            reasons.push(
+                "Vague bounty label without explicit cash figure ($/USD/crypto) or escrow platform"
+                    .to_string(),
+            );
             return EvaluationResult {
                 status: BountyStatus::Spam,
                 reward: None,
@@ -207,7 +221,10 @@ pub fn evaluate_candidate(
     // 3. Check Gating / Lockout / Assignees
     if !issue.assignees.is_empty() {
         let assignee_names: Vec<_> = issue.assignees.iter().map(|u| u.login.as_str()).collect();
-        reasons.push(format!("Issue is already assigned to: {}", assignee_names.join(", ")));
+        reasons.push(format!(
+            "Issue is already assigned to: {}",
+            assignee_names.join(", ")
+        ));
         return EvaluationResult {
             status: BountyStatus::Hold,
             reward: extracted_reward,
@@ -235,7 +252,10 @@ pub fn evaluate_candidate(
     }
 
     if recent_claim_count > 0 {
-        reasons.push(format!("Active reservation in comments ({} developer(s) attempted/claimed)", recent_claim_count));
+        reasons.push(format!(
+            "Active reservation in comments ({} developer(s) attempted/claimed)",
+            recent_claim_count
+        ));
         return EvaluationResult {
             status: BountyStatus::Hold,
             reward: extracted_reward,
@@ -245,7 +265,10 @@ pub fn evaluate_candidate(
 
     // 5. Check PR competition (any open PR means someone is already working/submitted)
     if matching_pr_count > 0 {
-        reasons.push(format!("Active competing PR(s): {} open PR(s) already submitted", matching_pr_count));
+        reasons.push(format!(
+            "Active competing PR(s): {} open PR(s) already submitted",
+            matching_pr_count
+        ));
         return EvaluationResult {
             status: BountyStatus::Contested,
             reward: extracted_reward,
@@ -255,7 +278,10 @@ pub fn evaluate_candidate(
 
     // 6. Stars / Credibility
     if repo.stargazers_count < min_stars && !has_bounty_label {
-        reasons.push(format!("Repository stars ({} < {})", repo.stargazers_count, min_stars));
+        reasons.push(format!(
+            "Repository stars ({} < {})",
+            repo.stargazers_count, min_stars
+        ));
         return EvaluationResult {
             status: BountyStatus::Hold,
             reward: extracted_reward,
@@ -278,7 +304,7 @@ mod tests {
 
     fn make_test_repo(full_name: &str, stars: u64) -> Repository {
         Repository {
-            name: full_name.split('/').last().unwrap().to_string(),
+            name: full_name.split('/').next_back().unwrap().to_string(),
             full_name: full_name.to_string(),
             stargazers_count: stars,
             forks_count: 5,
@@ -369,7 +395,11 @@ mod tests {
     #[test]
     fn test_rejects_hackathons_and_challenges() {
         let repo = make_test_repo("XHToken/Spark-X2.6", 800);
-        let issue = make_test_issue("HER Hack-Astron #7 | Challenge", "Win $100", &["bounty", "reward"]);
+        let issue = make_test_issue(
+            "HER Hack-Astron #7 | Challenge",
+            "Win $100",
+            &["bounty", "reward"],
+        );
         let eval = evaluate_candidate(&issue, &repo, 0, &[], 5);
         assert_eq!(eval.status, BountyStatus::Spam);
     }
@@ -377,7 +407,11 @@ mod tests {
     #[test]
     fn test_rejects_vague_unfunded_bounties() {
         let repo = make_test_repo("Reqrefusion/FreeCAD-Documentation-Project", 20);
-        let issue = make_test_issue("Maintaining Macros", "No explicit price", &["Bounty", "Reward"]);
+        let issue = make_test_issue(
+            "Maintaining Macros",
+            "No explicit price",
+            &["Bounty", "Reward"],
+        );
         let eval = evaluate_candidate(&issue, &repo, 0, &[], 5);
         assert_eq!(eval.status, BountyStatus::Spam);
     }
@@ -421,5 +455,111 @@ mod tests {
         let comments = vec!["/attempt I want to work on this".to_string()];
         let eval = evaluate_candidate(&issue, &repo, 0, &comments, 5);
         assert_eq!(eval.status, BountyStatus::Hold);
+    }
+}
+
+/// Parse a numeric USD-equivalent estimate from a detected reward string (e.g. `"$1,500"`, `"500 USDC"`).
+pub fn parse_reward_amount(raw: &str) -> Option<f64> {
+    let digits: String = raw
+        .chars()
+        .filter(|c| c.is_ascii_digit() || *c == '.')
+        .collect();
+    if digits.is_empty() {
+        return None;
+    }
+    digits.parse::<f64>().ok().filter(|v| *v > 0.0)
+}
+
+/// Compute a 0..=100 priority score for a bounty candidate.
+pub fn compute_priority_score(
+    repo_full_name: &str,
+    stars: u64,
+    matching_prs: usize,
+    reward: Option<&str>,
+) -> u32 {
+    let mut score: u32 = 20;
+    let repo_lower = repo_full_name.to_lowercase();
+    if VERIFIED_PROGRAMS.iter().any(|p| repo_lower.contains(p)) {
+        score += 25;
+    }
+    if stars >= 1000 {
+        score += 15;
+    } else if stars >= 100 {
+        score += 8;
+    }
+    if matching_prs == 0 {
+        score += 20;
+    } else if matching_prs == 1 {
+        score += 8;
+    }
+    if let Some(amt) = reward.and_then(parse_reward_amount) {
+        if amt >= 1000.0 {
+            score += 20;
+        } else if amt >= 250.0 {
+            score += 12;
+        } else {
+            score += 5;
+        }
+    }
+    score.min(100)
+}
+
+#[cfg(test)]
+mod v2_tests {
+    use super::*;
+
+    fn sample_repo(full_name: &str, stars: u64) -> Repository {
+        Repository {
+            name: full_name
+                .split('/')
+                .next_back()
+                .unwrap_or("repo")
+                .to_string(),
+            full_name: full_name.to_string(),
+            stargazers_count: stars,
+            forks_count: 10,
+            open_issues_count: 5,
+            html_url: format!("https://github.com/{full_name}"),
+            fork: false,
+            archived: false,
+        }
+    }
+
+    fn sample_issue(title: &str, body: &str) -> Issue {
+        Issue {
+            id: 1,
+            number: 42,
+            title: title.to_string(),
+            body: Some(body.to_string()),
+            html_url: "https://github.com/org/repo/issues/42".to_string(),
+            comments: 0,
+            created_at: "2026-11-24T00:00:00Z".to_string(),
+            updated_at: "2026-11-24T00:00:00Z".to_string(),
+            user: None,
+            repository_url: "https://api.github.com/repos/org/repo".to_string(),
+            labels: vec![],
+            assignees: vec![],
+            state: "open".to_string(),
+        }
+    }
+
+    #[test]
+    fn parses_reward_amounts_and_scores_candidates() {
+        assert_eq!(parse_reward_amount("$1,500 USDC"), Some(1500.0));
+        assert_eq!(parse_reward_amount("Price: 250 USD"), Some(250.0));
+        assert_eq!(parse_reward_amount("no amount"), None);
+
+        let high = compute_priority_score("tabularisdb/tabularis", 2500, 0, Some("$1,000"));
+        let low = compute_priority_score("unknown/repo", 10, 2, None);
+        assert_eq!(high, 100);
+        assert!(high > low);
+    }
+
+    #[test]
+    fn rejects_blacklisted_repos_as_spam() {
+        let repo = sample_repo("alfrexo95/bounty-bot", 5000);
+        let issue = sample_issue("Fix bug $500", "Reward $500");
+        let res = evaluate_candidate(&issue, &repo, 0, &[], 50);
+        assert_eq!(res.status, BountyStatus::Spam);
     }
 }

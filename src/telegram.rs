@@ -67,10 +67,7 @@ impl TelegramNotifier {
             BountyStatus::Spam => "🚫 <b>[SPAM / FILTERED]</b>",
         };
 
-        let reward_str = candidate
-            .reward
-            .as_deref()
-            .unwrap_or("Verified Bounty");
+        let reward_str = candidate.reward.as_deref().unwrap_or("Verified Bounty");
 
         let reasons_list = candidate
             .reasons
@@ -102,10 +99,7 @@ impl TelegramNotifier {
     }
 
     pub async fn send_html_message(&self, chat_id: i64, html: &str) -> Result<()> {
-        let url = format!(
-            "https://api.telegram.org/bot{}/sendMessage",
-            self.bot_token
-        );
+        let url = format!("https://api.telegram.org/bot{}/sendMessage", self.bot_token);
 
         let payload = json!({
             "chat_id": chat_id,

@@ -52,11 +52,11 @@ pub struct Issue {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum BountyStatus {
-    Pursue,     // Clean, verified, 0 or low competition
-    Hold,       // Active claim signal within recent hours
-    Contested,  // Many PRs (>2) competing
-    Gated,      // Restricted to core team/collaborators
-    Spam,       // Blacklisted bot/scam mirror
+    Pursue,    // Clean, verified, 0 or low competition
+    Hold,      // Active claim signal within recent hours
+    Contested, // Many PRs (>2) competing
+    Gated,     // Restricted to core team/collaborators
+    Spam,      // Blacklisted bot/scam mirror
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

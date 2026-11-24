@@ -1,6 +1,6 @@
 use crate::cache::DedupCache;
 use crate::config::Config;
-use crate::filters::evaluate_candidate;
+use crate::filters::{compute_priority_score, evaluate_candidate};
 use crate::github::GitHubClient;
 use crate::models::{BountyCandidate, BountyStatus};
 use crate::telegram::TelegramNotifier;
@@ -19,10 +19,8 @@ pub struct Scanner {
 impl Scanner {
     pub fn new(config: Config) -> Self {
         let github = GitHubClient::new(config.github_token.clone());
-        let telegram = TelegramNotifier::new(
-            config.telegram_bot_token.clone(),
-            config.telegram_chat_id,
-        );
+        let telegram =
+            TelegramNotifier::new(config.telegram_bot_token.clone(), config.telegram_chat_id);
         let cache = DedupCache::load_or_create(&config.cache_file);
 
         Self {
@@ -130,7 +128,8 @@ impl Scanner {
                         );
 
                         // If Pursue or Hold, alert!
-                        if eval.status == BountyStatus::Pursue || eval.status == BountyStatus::Hold {
+                        if eval.status == BountyStatus::Pursue || eval.status == BountyStatus::Hold
+                        {
                             let candidate = BountyCandidate {
                                 issue_url: issue.html_url.clone(),
                                 repo_full_name: repo.full_name.clone(),
@@ -143,9 +142,18 @@ impl Scanner {
                                 reasons: eval.reasons,
                             };
 
+                            let priority = compute_priority_score(
+                                &candidate.repo_full_name,
+                                candidate.stars,
+                                candidate.competition_prs,
+                                candidate.reward.as_deref(),
+                            );
                             info!(
-                                "Bounty Qualified: {} #{} (Status: {:?})",
-                                candidate.repo_full_name, candidate.issue_number, candidate.status
+                                "Bounty Qualified: {} #{} (Status: {:?}, Priority: {}/100)",
+                                candidate.repo_full_name,
+                                candidate.issue_number,
+                                candidate.status,
+                                priority
                             );
 
                             if let Err(e) = self.telegram.send_alert(&candidate).await {

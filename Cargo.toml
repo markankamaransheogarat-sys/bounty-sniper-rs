@@ -1,6 +1,6 @@
 [package]
 name = "bounty-sniper-rs"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2021"
 authors = ["markankamaransheogarat-sys"]
 description = "High-Frequency GitHub Bounty Scanner & Verification Radar in Rust with Telegram Alerts"

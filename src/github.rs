@@ -35,7 +35,10 @@ impl GitHubClient {
             .build()
             .expect("Failed to build HTTP client");
 
-        Self { client, _token: token }
+        Self {
+            client,
+            _token: token,
+        }
     }
 
     pub async fn search_issues(&self, query: &str) -> Result<Vec<Issue>> {
@@ -59,7 +62,11 @@ impl GitHubClient {
         }
 
         let val: Value = resp.json().await?;
-        let items = val.get("items").and_then(|v| v.as_array()).cloned().unwrap_or_default();
+        let items = val
+            .get("items")
+            .and_then(|v| v.as_array())
+            .cloned()
+            .unwrap_or_default();
 
         let mut issues = Vec::new();
         for item in items {
@@ -99,8 +106,15 @@ impl GitHubClient {
         Ok(bodies)
     }
 
-    pub async fn count_matching_open_prs(&self, repo_full_name: &str, issue_number: u64) -> Result<usize> {
-        let q = format!("repo:{} is:pr is:open \"#{}\"", repo_full_name, issue_number);
+    pub async fn count_matching_open_prs(
+        &self,
+        repo_full_name: &str,
+        issue_number: u64,
+    ) -> Result<usize> {
+        let q = format!(
+            "repo:{} is:pr is:open \"#{}\"",
+            repo_full_name, issue_number
+        );
         let url = format!(
             "https://api.github.com/search/issues?q={}&per_page=1",
             urlencoding::encode(&q)
