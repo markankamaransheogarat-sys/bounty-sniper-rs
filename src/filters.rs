@@ -41,6 +41,7 @@ const BLACKLISTED_OWNERS_AND_REPOS: &[&str] = &[
     "qwer80371832/loadertest",
     "freecad-documentation-project",
     "limitlessprojects",
+    "ies-boilerroom",
 ];
 
 const BOT_SPAMMERS: &[&str] = &[
