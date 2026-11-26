@@ -9,11 +9,7 @@ pub struct Config {
     #[arg(long, env = "GITHUB_TOKEN")]
     pub github_token: Option<String>,
 
-    #[arg(
-        long,
-        env = "TELEGRAM_BOT_TOKEN",
-        default_value = "7729508480:AAER27k6f9XScuakIKKRuZ_rU431hfPZe0k"
-    )]
+    #[arg(long, env = "TELEGRAM_BOT_TOKEN", default_value = "")]
     pub telegram_bot_token: String,
 
     #[arg(long, env = "TELEGRAM_CHAT_ID")]
